@@ -1,0 +1,29 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Place {
+  id        String   @id @default(cuid())
+  name      String
+  type      String?
+  address   String?
+  lat       Float
+  lon       Float
+  createdAt DateTime @default(now())
+  reviews   Review[]
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  author    String?
+  rating    Int
+  text      String
+  createdAt DateTime @default(now())
+  placeId   String
+  place     Place    @relation(fields: [placeId], references: [id])
+}
