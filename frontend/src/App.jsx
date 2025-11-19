@@ -4,31 +4,50 @@ import MapView from './components/MapView'
 import { fetchNearbyPlaces } from './services/places'
 import PlaceDetailsModal from './components/PlaceDetailsModal'
 import PlaceCreateModal from './components/PlaceCreateModal'
-import AuthModal from './components/AuthModal'
+import AuthPage from './components/AuthPage'
 import { getPlaces, createPlace } from './services/api'
+import { getRoute } from './services/routes'
+import { basePlacesNatal } from './data/basePlacesNatal'
 
 const LS_AUTH = 'mapify_auth_v1'
-const LS_REVIEWS = 'place_reviews_v1' // { [placeId]: Review[] }
+const LS_REVIEWS = 'place_reviews_v1'
+
+// helper simples pra iniciais
+function getInitials(name = '') {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0].toUpperCase())
+    .join('')
+}
 
 export default function App() {
   const [position, setPosition] = useState(null)
   const [apiPlaces, setApiPlaces] = useState([])
-  const [backendPlaces, setBackendPlaces] = useState([]) // vindos do backend
+  const [backendPlaces, setBackendPlaces] = useState([])
   const [loadingPlaces, setLoadingPlaces] = useState(false)
   const [radius, setRadius] = useState(1000)
+
+  // 'home' | 'auth' | 'profile'
+  const [view, setView] = useState('home')
 
   // Auth
   const [currentUser, setCurrentUser] = useState(null)
   const [token, setToken] = useState(null)
-  const [authModalOpen, setAuthModalOpen] = useState(false)
 
   // Modais de lugar
   const [selectedPlace, setSelectedPlace] = useState(null)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [createDraft, setCreateDraft] = useState(null)
 
-  // Reviews (segue local por enquanto)
+  // Reviews locais
   const [reviewsByPlace, setReviewsByPlace] = useState({})
+
+  // ROTA
+  const [routeTarget, setRouteTarget] = useState(null)
+  const [routeGeometry, setRouteGeometry] = useState(null) // [[lat, lon], ...]
+  const [routeInfo, setRouteInfo] = useState(null) // { distance, duration }
 
   // carregar auth + reviews do localStorage
   useEffect(() => {
@@ -82,7 +101,7 @@ export default function App() {
     )
   }, [])
 
-  // busca na API externa
+  // busca na API externa (OpenTripMap – hoje pode estar vazio se não tiver key)
   const fetchPlacesFromApi = useCallback(() => {
     if (!position) return
     setLoadingPlaces(true)
@@ -119,7 +138,7 @@ export default function App() {
     }
   }, [token, loadBackendPlaces])
 
-  // ====== FILTRAR PONTOS DA API PELO RAIO ======
+  // filtrar API pelo raio
   const filteredApiPlaces = useMemo(
     () =>
       apiPlaces.filter((p) => {
@@ -129,17 +148,35 @@ export default function App() {
     [apiPlaces, radius]
   )
 
-  // lista combinada (backend + API)
+  // lista combinada: BASE + backend + API
   const allPlaces = useMemo(
-    () => [...backendPlaces, ...filteredApiPlaces],
-    [backendPlaces, filteredApiPlaces]
+    () => [...basePlacesNatal, ...backendPlaces, ...filteredApiPlaces],
+    [backendPlaces, filteredApiPlaces] // basePlacesNatal é estático
   )
 
-  // abrir/fechar modal detalhes
+  // ===== Gamificação / perfil =====
+  const profileStats = useMemo(() => {
+    const savedPlaces = backendPlaces.length
+    const reviewedPlaces = Object.keys(reviewsByPlace).length
+    const totalReviews = Object.values(reviewsByPlace).reduce(
+      (sum, arr) => sum + arr.length,
+      0
+    )
+
+    // fórmula simples de XP (pode ajustar depois):
+    const xp = savedPlaces * 10 + reviewedPlaces * 5 + totalReviews * 2
+    const level = Math.floor(xp / 100) + 1
+    const currentLevelXp = xp % 100
+    const xpToNext = 100
+
+    return { savedPlaces, reviewedPlaces, totalReviews, xp, level, currentLevelXp, xpToNext }
+  }, [backendPlaces, reviewsByPlace])
+
+  // detalhes
   const openDetails = (p) => setSelectedPlace(p)
   const closeDetails = () => setSelectedPlace(null)
 
-  // adicionar review
+  // reviews
   const addReview = (review) => {
     if (!selectedPlace?.id) return
     setReviewsByPlace((prev) => {
@@ -150,18 +187,17 @@ export default function App() {
 
   const selectedReviews = selectedPlace ? reviewsByPlace[selectedPlace.id] || [] : []
 
-  // clique com botão direito no mapa -> abrir modal criar
+  // clique com botão direito no mapa (pedido de criação)
   const handleAddPlaceRequest = (placeDraft) => {
     if (!token) {
       alert('Faça login para salvar pontos turísticos.')
-      setAuthModalOpen(true)
+      setView('auth')
       return
     }
     setCreateDraft(placeDraft)
     setCreateModalOpen(true)
   }
 
-  // confirmar criação no modal
   const handleConfirmCreatePlace = async (values) => {
     if (!token || !createDraft) return
     try {
@@ -182,11 +218,11 @@ export default function App() {
     }
   }
 
-  // sucesso na autenticação
+  // sucesso de auth vindo da AuthPage
   const handleAuthSuccess = (user, tokenValue) => {
     setCurrentUser(user)
     setToken(tokenValue)
-    setAuthModalOpen(false)
+    setView('home')
     loadBackendPlaces()
   }
 
@@ -194,13 +230,138 @@ export default function App() {
     setCurrentUser(null)
     setToken(null)
     setBackendPlaces([])
+    // limpamos também rota quando sair
+    setRouteTarget(null)
+    setRouteGeometry(null)
+    setRouteInfo(null)
   }
 
+  // ====== ROTA REAL ======
+  const handleRouteToPlace = async (place) => {
+    if (!place || !position) return
+    if (typeof place.lat !== 'number' || typeof place.lon !== 'number') {
+      alert('Este ponto não possui coordenadas válidas.')
+      return
+    }
+
+    setRouteTarget(place)
+    try {
+      const route = await getRoute(position.lat, position.lng, place.lat, place.lon)
+      if (!route) {
+        alert('Não foi possível traçar a rota.')
+        return
+      }
+
+      const feature = route.features?.[0]
+      if (!feature) {
+        alert('Resposta de rota inválida.')
+        return
+      }
+
+      // converte [lon, lat] -> [lat, lon] para o Leaflet
+      const coords = feature.geometry.coordinates.map(([lon, lat]) => [lat, lon])
+      const summary = feature.properties.summary
+
+      setRouteGeometry(coords)
+      setRouteInfo({
+        distance: summary.distance, // metros
+        duration: summary.duration, // segundos
+      })
+    } catch (err) {
+      console.error('Erro ao obter rota:', err)
+      alert('Erro ao obter rota. Veja o console.')
+    }
+  }
+
+  const handleClearRoute = () => {
+    setRouteTarget(null)
+    setRouteGeometry(null)
+    setRouteInfo(null)
+  }
+
+  const hasRouteForSelected =
+    !!routeTarget && !!routeGeometry && selectedPlace && routeTarget.id === selectedPlace.id
+
+  // ====== TELAS ESPECIAIS ======
+  if (view === 'auth') {
+    return (
+      <AuthPage
+        onBack={() => setView('home')}
+        onAuthSuccess={handleAuthSuccess}
+      />
+    )
+  }
+
+  if (view === 'profile' && currentUser) {
+    return (
+      <div className="profile-page">
+        <header className="topbar">
+          <div className="topbar-left">
+            <h1 className="app-title">Seu perfil — Mapify Turismo</h1>
+          </div>
+          <div className="topbar-right">
+            <button className="login-btn" onClick={() => setView('home')}>
+              Voltar para o mapa
+            </button>
+            <button className="logout-btn" onClick={handleLogout}>
+              Sair
+            </button>
+          </div>
+        </header>
+
+        <main className="profile-main">
+          <section className="profile-card">
+            <div className="profile-header">
+              <div className="profile-avatar">
+                {getInitials(currentUser.name)}
+              </div>
+              <div className="profile-info">
+                <h2>{currentUser.name}</h2>
+                <p>{currentUser.email}</p>
+                <span className="profile-level-badge">Nível {profileStats.level}</span>
+              </div>
+            </div>
+
+            <div className="profile-xp-block">
+              <div className="profile-xp-label">
+                XP: {profileStats.xp} • Próximo nível em {profileStats.xpToNext - profileStats.currentLevelXp} XP
+              </div>
+              <div className="profile-xp-bar">
+                <div
+                  className="profile-xp-bar-fill"
+                  style={{
+                    width: `${(profileStats.currentLevelXp / profileStats.xpToNext) * 100}%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="profile-stats-grid">
+              <div className="profile-stat-card">
+                <span className="profile-stat-label">Locais salvos</span>
+                <span className="profile-stat-value">{profileStats.savedPlaces}</span>
+              </div>
+              <div className="profile-stat-card">
+                <span className="profile-stat-label">Locais avaliados</span>
+                <span className="profile-stat-value">{profileStats.reviewedPlaces}</span>
+              </div>
+              <div className="profile-stat-card">
+                <span className="profile-stat-label">Avaliações feitas</span>
+                <span className="profile-stat-value">{profileStats.totalReviews}</span>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    )
+  }
+
+  // ====== RENDER: TELA PRINCIPAL (HOME) ======
   return (
     <div className="app-root">
       <header className="topbar">
         <div className="topbar-left">
-          <h1>Site Turismo — Encontre pontos turísticos próximos</h1>
+          <h1 className="app-title">Site Turismo — Encontre pontos turísticos próximos</h1>
           <div className="controls">
             <label>
               Raio (m):
@@ -221,13 +382,25 @@ export default function App() {
         <div className="topbar-right">
           {currentUser ? (
             <div className="user-info">
-              <span className="user-name">Olá, {currentUser.name}</span>
+              <button
+                type="button"
+                className="user-chip"
+                onClick={() => setView('profile')}
+              >
+                <div className="user-avatar">
+                  {getInitials(currentUser.name)}
+                </div>
+                <div className="user-chip-texts">
+                  <div className="user-name">{currentUser.name}</div>
+                  <div className="user-level">Nível {profileStats.level}</div>
+                </div>
+              </button>
               <button className="logout-btn" onClick={handleLogout}>
                 Sair
               </button>
             </div>
           ) : (
-            <button className="login-btn" onClick={() => setAuthModalOpen(true)}>
+            <button className="login-btn" onClick={() => setView('auth')}>
               Entrar
             </button>
           )}
@@ -235,30 +408,38 @@ export default function App() {
       </header>
 
       <main className="main-content">
-        <MapView
-          center={position}
-          places={allPlaces}
-          loadingPlaces={loadingPlaces}
-          radius={radius}
-          onAddPlace={handleAddPlaceRequest} // botão direito chama isso
-          onSelectPlace={openDetails}
-        />
+        <section className="map-section">
+          <MapView
+            center={position}
+            places={allPlaces}
+            loadingPlaces={loadingPlaces}
+            radius={radius}
+            onAddPlace={handleAddPlaceRequest}
+            onSelectPlace={openDetails}
+            routeGeometry={routeGeometry} // <- aqui vai a rota real
+          />
+        </section>
 
         <aside className="sidebar">
           <h2>Locais encontrados</h2>
-          <p style={{ marginTop: 0, color: '#666', fontSize: '.9rem' }}>
+          <p className="sidebar-hint">
             Dica: clique com o <b>botão direito</b> no mapa para adicionar um ponto.
           </p>
 
           {loadingPlaces && <p>Buscando pontos turísticos...</p>}
           {!loadingPlaces && allPlaces.length === 0 && <p>Nenhum local encontrado.</p>}
 
-          <ul>
+          <ul className="places-list">
             {allPlaces.map((p) => (
-              <li key={p.id} onClick={() => openDetails(p)} style={{ cursor: 'pointer' }}>
+              <li
+                key={p.id}
+                onClick={() => openDetails(p)}
+                className="place-item"
+              >
                 <strong>{p.name}</strong>
                 <div className="meta">
-                  {(p.kinds || p.type || '').toString()} {p.dist ? `— ${Math.round(p.dist)} m` : ''}
+                  {(p.kinds || p.type || '').toString()}{' '}
+                  {p.dist ? `— ${Math.round(p.dist)} m` : ''}
                 </div>
               </li>
             ))}
@@ -266,7 +447,9 @@ export default function App() {
         </aside>
       </main>
 
-      <footer className="footer" />
+      <footer className="footer">
+        <span>Projeto de turismo interativo — mapa + pontos salvos pelo usuário.</span>
+      </footer>
 
       {/* Modal de detalhes */}
       {selectedPlace && (
@@ -275,6 +458,10 @@ export default function App() {
           reviews={selectedReviews}
           onAddReview={addReview}
           onClose={closeDetails}
+          onRoute={() => handleRouteToPlace(selectedPlace)}
+          onClearRoute={handleClearRoute}
+          hasRoute={hasRouteForSelected}
+          routeInfo={routeInfo}
         />
       )}
 
@@ -294,13 +481,6 @@ export default function App() {
           }}
         />
       )}
-
-      {/* Modal de login/cadastro */}
-      <AuthModal
-        open={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-        onAuthSuccess={handleAuthSuccess}
-      />
     </div>
   )
 }
