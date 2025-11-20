@@ -13,13 +13,60 @@ import {
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
-// Corrige os ícones do Leaflet (com Vite)
-delete L.Icon.Default.prototype._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-})
+// URLs dos ícones coloridos
+const SHADOW_URL =
+  'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png'
+
+// Pacote de markers coloridos (open source)
+const ICON_BLUE_2X =
+  'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png'
+const ICON_BLUE =
+  'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png'
+const ICON_GREEN_2X =
+  'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png'
+const ICON_GREEN =
+  'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png'
+const ICON_RED_2X =
+  'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png'
+const ICON_RED =
+  'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png'
+const ICON_GREY_2X =
+  'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-grey.png'
+const ICON_GREY =
+  'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-grey.png'
+
+// Helper pra criar ícone Leaflet
+function createColoredIcon(iconUrl, iconRetinaUrl) {
+  return new L.Icon({
+    iconUrl,
+    iconRetinaUrl,
+    shadowUrl: SHADOW_URL,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41],
+  })
+}
+
+// Ícones
+const iconDefault = createColoredIcon(ICON_GREY, ICON_GREY_2X)            // não visitado
+const iconTouristVisited = createColoredIcon(ICON_BLUE, ICON_BLUE_2X)    // ponto turístico
+const iconRestaurantVisited = createColoredIcon(ICON_GREEN, ICON_GREEN_2X) // restaurante
+const iconCommerceVisited = createColoredIcon(ICON_RED, ICON_RED_2X)     // comércio
+
+// Decide qual ícone usar com base no tipo + se está visitado
+function getMarkerIcon(place, isVisited) {
+  if (!isVisited) return iconDefault
+
+  const typeStr = (place.type || place.kinds || '').toLowerCase()
+
+  if (typeStr.includes('restaur')) return iconRestaurantVisited
+  if (typeStr.includes('comércio') || typeStr.includes('comercio') || typeStr.includes('shopping')) {
+    return iconCommerceVisited
+  }
+  // default para cartão postal de ponto turístico
+  return iconTouristVisited
+}
 
 function Recenter({ center }) {
   const map = useMap()
@@ -31,16 +78,9 @@ function Recenter({ center }) {
 function RightClickAdd({ onAddPlace }) {
   useMapEvents({
     contextmenu(e) {
-      const name = prompt('Nome do ponto turístico:')
-      if (!name) return
-      const type = prompt('Tipo do local (ex: praça, museu, mirante):') || 'custom'
-
       onAddPlace?.({
-        id: `custom-${Date.now()}`,
-        name,
         lat: e.latlng.lat,
         lon: e.latlng.lng,
-        type,
       })
     },
   })
@@ -54,7 +94,8 @@ export default function MapView({
   radius,
   onAddPlace,
   onSelectPlace,
-  routeGeometry, // <- rota real vinda do App
+  routeGeometry,
+  visitedPlaces = [], // 👈 IDs dos locais visitados
 }) {
   const defaultCenter = { lat: -23.55052, lng: -46.633308 }
 
@@ -88,6 +129,7 @@ export default function MapView({
                 key={p.id}
                 position={[p.lat, p.lon]}
                 eventHandlers={{ click: () => onSelectPlace?.(p) }}
+                icon={getMarkerIcon(p, visitedPlaces.includes(p.id))}
               >
                 <Popup>
                   <strong>{p.name}</strong>
@@ -97,10 +139,10 @@ export default function MapView({
                   </div>
                 </Popup>
               </Marker>
-            ),
+            )
         )}
 
-        {/* Rota REAL: sequência de pontos da API de rotas */}
+        {/* Rota REAL */}
         {routeGeometry && routeGeometry.length > 1 && (
           <Polyline
             positions={routeGeometry}

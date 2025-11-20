@@ -1,5 +1,5 @@
 // src/components/PlaceDetailsModal.jsx
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 
 function Stars({ value = 0 }) {
   const full = Math.round(value)
@@ -15,19 +15,48 @@ function Stars({ value = 0 }) {
   )
 }
 
+// mesma lógica do App
+const getUserKey = (user) => user?.email ?? user?.id ?? user?.name ?? null
+
 export default function PlaceDetailsModal({
   place,
   reviews = [],
   onAddReview,
   onClose,
-  onRoute,        // chamada pra traçar rota
-  onClearRoute,   // chamada pra limpar rota
-  hasRoute,       // true/false se a rota está ativa
-  routeInfo,      // { distance: m, duration: s } opcional
+  onRoute,
+  onClearRoute,
+  hasRoute,
+  routeInfo,
+  user,
+  onDeleteReview,
+  visitedPlaces = [],
+  onToggleVisited,
 }) {
-  const [author, setAuthor] = useState('')
+  const canReview = !!user
+  const userKey = getUserKey(user)
+
+  // review do usuário logado (se existir)
+  const myReview = useMemo(() => {
+    if (!userKey) return null
+    return reviews.find((r) => {
+      const reviewKey = r.userKey ?? r.userId ?? null
+      return reviewKey === userKey
+    }) || null
+  }, [reviews, userKey])
+
   const [rating, setRating] = useState(5)
   const [text, setText] = useState('')
+
+  // sempre que mudar a review do usuário, sincroniza no formulário
+  useEffect(() => {
+    if (myReview) {
+      setRating(myReview.rating ?? 5)
+      setText(myReview.text ?? '')
+    } else {
+      setRating(5)
+      setText('')
+    }
+  }, [myReview])
 
   const avg = useMemo(() => {
     if (!reviews.length) return 0
@@ -37,18 +66,37 @@ export default function PlaceDetailsModal({
   const submit = (e) => {
     e.preventDefault()
     if (!text.trim()) return
+
+    if (!canReview) {
+      alert('Faça login para avaliar este local.')
+      return
+    }
+
+    const authorName = user?.name?.trim() || 'Visitante'
+
     onAddReview?.({
-      author: author.trim() || 'Anônimo',
+      author: authorName,
       rating: Number(rating),
       text: text.trim(),
       ts: Date.now(),
     })
-    setAuthor('')
-    setRating(5)
-    setText('')
+  }
+
+  const handleEditClick = (review) => {
+    setRating(review.rating ?? 5)
+    setText(review.text ?? '')
+  }
+
+  const handleDeleteClick = () => {
+    if (!canReview) return
+    if (!window.confirm('Tem certeza que deseja remover sua avaliação?')) return
+    onDeleteReview?.()
   }
 
   if (!place) return null
+
+  // cartão postal / visitado
+  const isVisited = visitedPlaces.includes(place.id)
 
   // ====== INFO DE DISTÂNCIA / TEMPO ======
   let distanceMeters = null
@@ -57,18 +105,15 @@ export default function PlaceDetailsModal({
   let carTimeMin = null
 
   if (routeInfo && typeof routeInfo.distance === 'number') {
-    // dados reais da rota (OSRM / OpenRouteService etc.)
     distanceMeters = routeInfo.distance
     distanceKm = distanceMeters / 1000
-    walkTimeMin = Math.round((routeInfo.duration || 0) / 60) // duração real em segundos
-    // carro: aproximação simples
-    carTimeMin = Math.round((distanceKm / 40) * 60) // 40 km/h
+    walkTimeMin = Math.round((routeInfo.duration || 0) / 60)
+    carTimeMin = Math.round((distanceKm / 40) * 60)
   } else if (typeof place.dist === 'number') {
-    // fallback usando place.dist, como era antes
     distanceMeters = place.dist
     distanceKm = distanceMeters / 1000
-    walkTimeMin = Math.round((distanceKm / 5) * 60)   // 5 km/h
-    carTimeMin = Math.round((distanceKm / 40) * 60)   // 40 km/h
+    walkTimeMin = Math.round((distanceKm / 5) * 60)
+    carTimeMin = Math.round((distanceKm / 40) * 60)
   }
 
   return (
@@ -132,6 +177,39 @@ export default function PlaceDetailsModal({
             </div>
           </div>
 
+          {/* ====== CARTÃO POSTAL ====== */}
+          <div className="modal-section">
+            <strong>Cartão postal: </strong>
+            {canReview ? (
+              <>
+                {isVisited ? (
+                  <>
+                    Você já visitou este local{' '}
+                    <button
+                      type="button"
+                      className="tag-btn tag-btn-danger"
+                      onClick={() => onToggleVisited?.(place.id)}
+                    >
+                      Remover dos visitados
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="tag-btn"
+                    onClick={() => onToggleVisited?.(place.id)}
+                  >
+                    Marcar como visitado
+                  </button>
+                )}
+              </>
+            ) : (
+              <span style={{ color: '#666' }}>
+                faça login para marcar como visitado.
+              </span>
+            )}
+          </div>
+
           {/* ====== AVALIAÇÕES ====== */}
           <div className="modal-section">
             <strong>Avaliações:</strong>{' '}
@@ -152,42 +230,65 @@ export default function PlaceDetailsModal({
               <p style={{ marginTop: 6, color: '#666' }}>Ainda não há comentários.</p>
             )}
             <ul className="reviews-list">
-              {reviews.map((r, idx) => (
-                <li key={idx} className="review-item">
-                  <div className="review-avatar">
-                    {r.author?.charAt(0)?.toUpperCase() || 'A'}
-                  </div>
-                  <div className="review-content">
-                    <div className="review-head">
-                      <span className="review-author">{r.author}</span>
-                      <span className="review-stars">★{r.rating}</span>
+              {reviews.map((r, idx) => {
+                const reviewKey = r.userKey ?? r.userId ?? null
+                const isMine = userKey && reviewKey === userKey
+                return (
+                  <li key={idx} className="review-item">
+                    <div className="review-avatar">
+                      {r.author?.charAt(0)?.toUpperCase() || 'A'}
                     </div>
-                    <div className="review-text">{r.text}</div>
-                    <div className="review-date">
-                      {new Date(r.ts).toLocaleString()}
+                    <div className="review-content">
+                      <div className="review-head">
+                        <span className="review-author">{r.author}</span>
+                        <span className="review-stars">★{r.rating}</span>
+                        {isMine && (
+                          <div className="review-actions-inline">
+                            <button
+                              type="button"
+                              className="review-action-btn"
+                              onClick={() => handleEditClick(r)}
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              className="review-action-btn review-action-btn--danger"
+                              onClick={handleDeleteClick}
+                            >
+                              Remover
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="review-text">{r.text}</div>
+                      <div className="review-date">
+                        {new Date(r.ts).toLocaleString()}
+                      </div>
                     </div>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                )
+              })}
             </ul>
           </div>
         </div>
 
-        {/* ====== FORM NOVA AVALIAÇÃO ====== */}
+        {/* ====== FORM NOVA AVALIAÇÃO / EDIÇÃO ====== */}
         <form className="modal-form" onSubmit={submit}>
-          <div className="form-row">
-            <label>Seu nome</label>
-            <input
-              value={author}
-              onChange={(e) => setAuthor(e.target.value)}
-              placeholder="Opcional"
-            />
-          </div>
+          {!canReview && (
+            <p style={{ marginBottom: 8, fontSize: '.85rem', color: '#666' }}>
+              Faça login para deixar sua avaliação.
+            </p>
+          )}
 
           <div className="form-row form-row-inline">
             <div style={{ flex: 1 }}>
               <label>Nota</label>
-              <select value={rating} onChange={(e) => setRating(e.target.value)}>
+              <select
+                value={rating}
+                onChange={(e) => setRating(e.target.value)}
+                disabled={!canReview}
+              >
                 {[5, 4, 3, 2, 1].map((n) => (
                   <option key={n} value={n}>
                     {n}
@@ -204,12 +305,21 @@ export default function PlaceDetailsModal({
               onChange={(e) => setText(e.target.value)}
               rows={3}
               required
-              placeholder="Como foi sua experiência?"
+              disabled={!canReview}
+              placeholder={
+                canReview
+                  ? myReview
+                    ? 'Atualize sua avaliação sobre este local'
+                    : `Como foi sua experiência, ${user.name}?`
+                  : 'Entre para deixar sua opinião sobre este local'
+              }
             />
           </div>
 
           <div className="form-actions">
-            <button type="submit">Enviar avaliação</button>
+            <button type="submit" disabled={!canReview}>
+              {myReview ? 'Salvar alterações' : 'Enviar avaliação'}
+            </button>
           </div>
         </form>
       </div>

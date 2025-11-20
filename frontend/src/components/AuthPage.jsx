@@ -1,32 +1,48 @@
 // src/components/AuthPage.jsx
 import React, { useState } from 'react'
-import { loginUser, registerUser } from '../services/api'
+import { loginUser, registerUser, requestPasswordReset } from '../services/api'
 
 export default function AuthPage({ onBack, onAuthSuccess }) {
-  const [mode, setMode] = useState('login') // 'login' | 'register'
+  // 'login' | 'register' | 'forgot'
+  const [mode, setMode] = useState('login')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [info, setInfo] = useState('')
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    setInfo('')
     setLoading(true)
+
     try {
       if (mode === 'register') {
         const res = await registerUser({ name, email, password })
         onAuthSuccess(res.user, res.token)
-      } else {
+      } else if (mode === 'login') {
         const res = await loginUser({ email, password })
         onAuthSuccess(res.user, res.token)
+      } else if (mode === 'forgot') {
+        await requestPasswordReset({ email })
+        setInfo(
+          'Se o e-mail estiver cadastrado, você receberá um link para redefinir sua senha.'
+        )
       }
     } catch (err) {
       setError(err.message || 'Erro na autenticação')
     } finally {
       setLoading(false)
     }
+  }
+
+  const goToLogin = () => {
+    setMode('login')
+    setError('')
+    setInfo('')
+    setPassword('')
   }
 
   return (
@@ -46,30 +62,39 @@ export default function AuthPage({ onBack, onAuthSuccess }) {
         </div>
 
         <div className="auth-card">
-          <div className="auth-card-header">
-            <button
-              type="button"
-              className={
-                mode === 'login'
-                  ? 'auth-tab-btn active'
-                  : 'auth-tab-btn'
-              }
-              onClick={() => setMode('login')}
-            >
-              Entrar
-            </button>
-            <button
-              type="button"
-              className={
-                mode === 'register'
-                  ? 'auth-tab-btn active'
-                  : 'auth-tab-btn'
-              }
-              onClick={() => setMode('register')}
-            >
-              Criar conta
-            </button>
-          </div>
+          {/* Tabs só para login/cadastro */}
+          {mode !== 'forgot' ? (
+            <div className="auth-card-header">
+              <button
+                type="button"
+                className={mode === 'login' ? 'auth-tab-btn active' : 'auth-tab-btn'}
+                onClick={() => {
+                  setMode('login')
+                  setError('')
+                  setInfo('')
+                }}
+              >
+                Entrar
+              </button>
+              <button
+                type="button"
+                className={mode === 'register' ? 'auth-tab-btn active' : 'auth-tab-btn'}
+                onClick={() => {
+                  setMode('register')
+                  setError('')
+                  setInfo('')
+                }}
+              >
+                Criar conta
+              </button>
+            </div>
+          ) : (
+            <div className="auth-card-header">
+              <button type="button" className="auth-tab-btn active">
+                Recuperar senha
+              </button>
+            </div>
+          )}
 
           <form className="auth-form" onSubmit={handleSubmit}>
             {mode === 'register' && (
@@ -95,30 +120,78 @@ export default function AuthPage({ onBack, onAuthSuccess }) {
               />
             </div>
 
-            <div className="form-row">
-              <label>Senha</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                placeholder="••••••••"
-              />
-            </div>
+            {mode !== 'forgot' && (
+              <div className="form-row">
+                <label>Senha</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  placeholder="••••••••"
+                />
+              </div>
+            )}
 
             {error && <div className="form-error">{error}</div>}
+            {info && !error && <div className="form-info">{info}</div>}
 
             <button className="auth-submit-btn" type="submit" disabled={loading}>
               {loading
                 ? 'Enviando...'
                 : mode === 'login'
                 ? 'Entrar'
-                : 'Criar conta'}
+                : mode === 'register'
+                ? 'Criar conta'
+                : 'Enviar link de recuperação'}
             </button>
 
+            {/* Textos auxiliares / links */}
             {mode === 'login' && (
+              <>
+                <p className="auth-hint">
+                  Ainda não tem conta? Clique em <b>Criar conta</b> para se cadastrar.
+                </p>
+                <p className="auth-hint">
+                  Esqueceu sua senha?{' '}
+                  <button
+                    type="button"
+                    className="auth-link-button"
+                    onClick={() => {
+                      setMode('forgot')
+                      setError('')
+                      setInfo('')
+                    }}
+                  >
+                    Recuperar acesso
+                  </button>
+                </p>
+              </>
+            )}
+
+            {mode === 'forgot' && (
               <p className="auth-hint">
-                Ainda não tem conta? Clique em <b>Criar conta</b> para se cadastrar.
+                Informe seu e-mail e enviaremos instruções para redefinir sua senha.{' '}
+                <button
+                  type="button"
+                  className="auth-link-button"
+                  onClick={goToLogin}
+                >
+                  Voltar para login
+                </button>
+              </p>
+            )}
+
+            {mode === 'register' && (
+              <p className="auth-hint">
+                Já tem conta?{' '}
+                <button
+                  type="button"
+                  className="auth-link-button"
+                  onClick={goToLogin}
+                >
+                  Entrar
+                </button>
               </p>
             )}
           </form>

@@ -14,3 +14,6 @@ const pool = new Pool({
 })
 
 export default pool
+
+// Devido à uma falha de conexão com o banco de dados devido ao Antivirús Kaspersky, tentamos resolver de algum jeito para conectá-lo porém não conseguimos à tempo.
+// Utilizamos o BackEnd para armazenar dados fora do navegador (Arrays que armazenam enquanto a aplicação rodar) e para configurar rotas e Autenticação.

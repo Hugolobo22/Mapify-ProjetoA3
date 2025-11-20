@@ -4,6 +4,8 @@ import cors from 'cors'
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
 import dotenv from 'dotenv'
+import crypto from 'crypto'
+import nodemailer from 'nodemailer'  // <- NOVO
 
 dotenv.config()
 
@@ -12,14 +14,36 @@ app.use(cors())
 app.use(express.json())
 
 // ========= "BANCO" EM MEMÓRIA =========
-// usuários e lugares só existem enquanto o servidor está rodando
 let users = []
 let nextUserId = 1
 
 let places = []
 let nextPlaceId = 1
 
+let resetTokens = [] // { token, userId, expiresAt }
+
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-mapify'
+
+// ========= E-MAIL (NODEMAILER) =========
+
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT || 587),
+  secure: false, // se usar porta 465, mude para true
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+})
+
+// Teste opcional (pode comentar se quiser)
+// transporter.verify((err, success) => {
+//   if (err) {
+//     console.error('Erro ao conectar SMTP:', err)
+//   } else {
+//     console.log('SMTP pronto para enviar e-mails.')
+//   }
+// })
 
 // ========= FUNÇÕES AUXILIARES =========
 
@@ -122,7 +146,127 @@ app.post('/auth/login', async (req, res) => {
   }
 })
 
-// ========= ROTAS PÚBLICAS SIMPLES =========
+// ========= RECUPERAÇÃO DE SENHA =========
+
+// Pede recuperação
+// Pede recuperação
+app.post('/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body
+
+    if (!email) {
+      return res.status(400).json({ error: 'email é obrigatório' })
+    }
+
+    const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase())
+
+    // Resposta genérica mesmo se não achar
+    if (!user) {
+      console.log('[RECUPERAÇÃO] Pedido para email não cadastrado:', email)
+      return res.json({
+        message:
+          'Se existir uma conta com este e-mail, enviamos instruções de recuperação.',
+      })
+    }
+
+    // 🔎 Validação rápida das variáveis de e-mail
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      console.error('[RECUPERAÇÃO] SMTP não configurado corretamente no .env')
+      return res.status(500).json({
+        error: 'Servidor de e-mail não configurado',
+        details: 'Verifique SMTP_HOST, SMTP_USER e SMTP_PASS no .env',
+      })
+    }
+
+    // Gera token de reset
+    const token = crypto.randomBytes(32).toString('hex')
+    const expiresAt = Date.now() + 30 * 60 * 1000 // 30 min
+
+    // Limpa tokens antigos desse usuário
+    resetTokens = resetTokens.filter((t) => t.userId !== user.id)
+    resetTokens.push({ token, userId: user.id, expiresAt })
+
+    const resetLink = `http://localhost:5173/reset-password?token=${token}` // ajuste se seu front tiver outra porta
+
+    // Tentativa de envio de e-mail
+    try {
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || '"Mapify" <no-reply@mapify.local>',
+        to: user.email,
+        subject: 'Recuperação de senha - Mapify Turismo',
+        text: `Olá, ${user.name}!\n\nRecebemos um pedido para redefinir sua senha no Mapify.\n\nUse o link abaixo para criar uma nova senha (válido por 30 minutos):\n\n${resetLink}\n\nSe você não fez este pedido, ignore este e-mail.`,
+        html: `
+          <p>Olá, <strong>${user.name}</strong>!</p>
+          <p>Recebemos um pedido para redefinir sua senha no <strong>Mapify Turismo</strong>.</p>
+          <p>Use o botão abaixo para criar uma nova senha (o link é válido por 30 minutos):</p>
+          <p>
+            <a href="${resetLink}" style="display:inline-block;padding:10px 18px;border-radius:6px;background:#2563eb;color:white;text-decoration:none;font-weight:bold;">
+              Redefinir senha
+            </a>
+          </p>
+          <p>Ou copie e cole este link no navegador:</p>
+          <p><a href="${resetLink}">${resetLink}</a></p>
+          <p>Se você não fez este pedido, pode ignorar este e-mail.</p>
+        `,
+      })
+
+      console.log('[RECUPERAÇÃO] E-mail de reset enviado para:', user.email)
+    } catch (smtpErr) {
+      console.error('[RECUPERAÇÃO] ERRO AO ENVIAR E-MAIL:', smtpErr)
+      return res.status(500).json({
+        error: 'Erro ao enviar e-mail de recuperação',
+        details: smtpErr.message || 'Falha no servidor SMTP',
+      })
+    }
+
+    return res.json({
+      message:
+        'Se existir uma conta com este e-mail, enviamos instruções de recuperação.',
+    })
+  } catch (err) {
+    console.error('ERRO NO FORGOT PASSWORD (GERAL):', err)
+    res.status(500).json({
+      error: 'Erro ao solicitar recuperação de senha',
+      details: err.message,
+    })
+  }
+})
+
+// Redefinir senha (para usar depois com tela de reset)
+app.post('/auth/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body
+
+    if (!token || !password) {
+      return res
+        .status(400)
+        .json({ error: 'token e password são obrigatórios' })
+    }
+
+    const entry = resetTokens.find((t) => t.token === token)
+
+    if (!entry || entry.expiresAt < Date.now()) {
+      return res.status(400).json({ error: 'Token inválido ou expirado' })
+    }
+
+    const user = users.find((u) => u.id === entry.userId)
+    if (!user) {
+      return res.status(400).json({ error: 'Usuário não encontrado' })
+    }
+
+    const newHash = await bcrypt.hash(password, 10)
+    user.passwordHash = newHash
+
+    resetTokens = resetTokens.filter((t) => t.token !== token)
+
+    return res.json({ message: 'Senha redefinida com sucesso.' })
+  } catch (err) {
+    console.error('ERRO NO RESET PASSWORD:', err)
+    res.status(500).json({ error: 'Erro ao redefinir senha' })
+  }
+})
+
+// ========= ROTAS PÚBLICAS =========
 
 app.get('/', (req, res) => {
   res.json({
@@ -132,16 +276,14 @@ app.get('/', (req, res) => {
   })
 })
 
-// ========= ROTAS DE PLACES (PROTEGIDAS) =========
+// ========= ROTAS DE PLACES =========
 
-// Listar lugares (somente logado)
 app.get('/places', authMiddleware, (req, res) => {
   res.json(places)
 })
 
-// Criar lugar
 app.post('/places', authMiddleware, (req, res) => {
-  const { name, type, address, lat, lon } = req.body
+  const { name, type, address, lat, lon, description, imageUrl } = req.body
 
   if (!name || lat == null || lon == null) {
     return res.status(400).json({ error: 'name, lat e lon são obrigatórios' })
@@ -154,6 +296,8 @@ app.post('/places', authMiddleware, (req, res) => {
     address: address || null,
     lat,
     lon,
+    description: description || null,
+    imageUrl: imageUrl || null,
     created_at: new Date().toISOString(),
     created_by: req.user.id,
   }
@@ -162,7 +306,6 @@ app.post('/places', authMiddleware, (req, res) => {
   res.status(201).json(place)
 })
 
-// Atualizar lugar
 app.put('/places/:id', authMiddleware, (req, res) => {
   const id = Number(req.params.id)
   const idx = places.findIndex((p) => p.id === id)
@@ -170,7 +313,7 @@ app.put('/places/:id', authMiddleware, (req, res) => {
     return res.status(404).json({ error: 'Lugar não encontrado' })
   }
 
-  const { name, type, address, lat, lon } = req.body
+  const { name, type, address, lat, lon, description, imageUrl } = req.body
 
   places[idx] = {
     ...places[idx],
@@ -179,12 +322,13 @@ app.put('/places/:id', authMiddleware, (req, res) => {
     address: address ?? places[idx].address,
     lat: lat ?? places[idx].lat,
     lon: lon ?? places[idx].lon,
+    description: description ?? places[idx].description,
+    imageUrl: imageUrl ?? places[idx].imageUrl,
   }
 
   res.json(places[idx])
 })
 
-// Remover lugar
 app.delete('/places/:id', authMiddleware, (req, res) => {
   const id = Number(req.params.id)
   const exists = places.some((p) => p.id === id)

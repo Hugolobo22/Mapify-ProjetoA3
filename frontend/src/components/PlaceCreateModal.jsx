@@ -1,8 +1,9 @@
+// src/components/PlaceCreateModal.jsx
 import React, { useState } from 'react'
 
 export default function PlaceCreateModal({ coords, onSave, onClose }) {
   const [name, setName] = useState('')
-  const [type, setType] = useState('Ponto turístico')
+  const [type, setType] = useState('Ponto turístico') // valor padrão
   const [address, setAddress] = useState('')
 
   if (!coords) return null
@@ -13,7 +14,7 @@ export default function PlaceCreateModal({ coords, onSave, onClose }) {
 
     onSave?.({
       name: name.trim(),
-      type: type.trim() || 'Ponto turístico',
+      type: type, // já vem do select
       address: address.trim() || undefined,
     })
   }
@@ -44,11 +45,14 @@ export default function PlaceCreateModal({ coords, onSave, onClose }) {
 
           <div className="form-row">
             <label>Tipo / categoria</label>
-            <input
+            <select
               value={type}
               onChange={(e) => setType(e.target.value)}
-              placeholder="Ex: Praça, Museu, Mirante..."
-            />
+            >
+              <option value="Ponto turístico">Ponto turístico</option>
+              <option value="Restaurante">Restaurante</option>
+              <option value="Comércio">Comércio</option>
+            </select>
           </div>
 
           <div className="form-row">
@@ -61,7 +65,11 @@ export default function PlaceCreateModal({ coords, onSave, onClose }) {
           </div>
 
           <div className="form-actions">
-            <button type="button" onClick={onClose} style={{ marginRight: 8, background: '#ccc', color: '#333' }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{ marginRight: 8, background: '#ccc', color: '#333' }}
+            >
               Cancelar
             </button>
             <button type="submit">

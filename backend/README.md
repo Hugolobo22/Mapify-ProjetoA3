@@ -1,4 +1,4 @@
-# Site Turismo - Mapify (React + Leaflet)
+# Site Turismo - Mapify
 
 
 ## Requisitos
@@ -16,12 +16,7 @@ npm install
 ```
 
 
-3. (Opcional) Crie um arquivo `.env` na raiz com sua chave do OpenTripMap:
-
-
-```
-VITE_OTM_API_KEY=your_opentripmap_api_key_here
-```
+3. Crie um arquivo `.env` e cole os dados fornecidos pelo dono do projeto (Consulte-o para pegar as chaves):
 
 
 4. Inicie a aplicação em desenvolvimento:
@@ -30,6 +25,3 @@ VITE_OTM_API_KEY=your_opentripmap_api_key_here
 ```bash
 npm run dev
 ```
-
-
-Abra o endereço indicado pelo Vite (normalmente http://localhost:5173).

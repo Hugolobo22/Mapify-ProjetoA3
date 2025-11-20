@@ -8,19 +8,17 @@ import AuthPage from './components/AuthPage'
 import { getPlaces, createPlace } from './services/api'
 import { getRoute } from './services/routes'
 import { basePlacesNatal } from './data/basePlacesNatal'
+import ProfilePage from './components/ProfilePage'
+import SavedPlacesPage from './components/SavedPlacesPage'
+import ReviewedPlacesPage from './components/ReviewedPlacesPage'
+import VisitedPlacesPage from './components/VisitedPlacesPage'
 
 const LS_AUTH = 'mapify_auth_v1'
-const LS_REVIEWS = 'place_reviews_v1'
+const LS_REVIEWS_PREFIX = 'place_reviews_v1_'   // reviews por usuário
+const LS_VISITED_PREFIX = 'visited_places_v1_'  // locais visitados por usuário
 
-// helper simples pra iniciais
-function getInitials(name = '') {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0].toUpperCase())
-    .join('')
-}
+// chave estável por usuário (email → id → name)
+const getUserKey = (user) => user?.email ?? user?.id ?? user?.name ?? null
 
 export default function App() {
   const [position, setPosition] = useState(null)
@@ -29,7 +27,7 @@ export default function App() {
   const [loadingPlaces, setLoadingPlaces] = useState(false)
   const [radius, setRadius] = useState(1000)
 
-  // 'home' | 'auth' | 'profile'
+  // 'home' | 'auth' | 'profile' | 'saved' | 'reviewed' | 'visited'
   const [view, setView] = useState('home')
 
   // Auth
@@ -38,34 +36,76 @@ export default function App() {
 
   // Modais de lugar
   const [selectedPlace, setSelectedPlace] = useState(null)
-  const [createModalOpen, setCreateModalOpen] = useState(false)
-  const [createDraft, setCreateDraft] = useState(null)
+  const [createCoords, setCreateCoords] = useState(null) // { lat, lon }
 
-  // Reviews locais
+  // Reviews locais (por usuário)
   const [reviewsByPlace, setReviewsByPlace] = useState({})
+
+  // Locais visitados (cartão postal) por usuário – array de IDs de lugar
+  const [visitedPlaces, setVisitedPlaces] = useState([])
 
   // ROTA
   const [routeTarget, setRouteTarget] = useState(null)
   const [routeGeometry, setRouteGeometry] = useState(null) // [[lat, lon], ...]
   const [routeInfo, setRouteInfo] = useState(null) // { distance, duration }
 
-  // carregar auth + reviews do localStorage
+  // ------- Helpers de reviews por usuário -------
+  function loadReviewsForUser(user) {
+    const userKey = getUserKey(user)
+    if (!userKey) {
+      setReviewsByPlace({})
+      return
+    }
+    const key = `${LS_REVIEWS_PREFIX}${userKey}`
+    try {
+      const rv = JSON.parse(localStorage.getItem(key) || '{}')
+      setReviewsByPlace(rv && typeof rv === 'object' ? rv : {})
+    } catch {
+      setReviewsByPlace({})
+    }
+  }
+
+  // ------- Helpers de visitados por usuário -------
+  function loadVisitedForUser(user) {
+    const userKey = getUserKey(user)
+    if (!userKey) {
+      setVisitedPlaces([])
+      return
+    }
+    const key = `${LS_VISITED_PREFIX}${userKey}`
+    try {
+      const raw = localStorage.getItem(key)
+      const arr = raw ? JSON.parse(raw) : []
+      setVisitedPlaces(Array.isArray(arr) ? arr : [])
+    } catch {
+      setVisitedPlaces([])
+    }
+  }
+
+  const toggleVisited = (placeId) => {
+    if (!currentUser) {
+      alert('Faça login para marcar locais como visitados.')
+      return
+    }
+    setVisitedPlaces((prev) =>
+      prev.includes(placeId)
+        ? prev.filter((id) => id !== placeId)
+        : [...prev, placeId]
+    )
+  }
+
+  // carregar auth + dados do usuário do localStorage
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(LS_AUTH) || 'null')
       if (saved && saved.token && saved.user) {
         setToken(saved.token)
         setCurrentUser(saved.user)
+        loadReviewsForUser(saved.user)
+        loadVisitedForUser(saved.user)
       }
     } catch {
       // ignore
-    }
-
-    try {
-      const rv = JSON.parse(localStorage.getItem(LS_REVIEWS) || '{}')
-      setReviewsByPlace(rv && typeof rv === 'object' ? rv : {})
-    } catch {
-      setReviewsByPlace({})
     }
   }, [])
 
@@ -78,10 +118,23 @@ export default function App() {
     }
   }, [token, currentUser])
 
-  // persistir reviews
+  // persistir reviews POR USUÁRIO
   useEffect(() => {
-    localStorage.setItem(LS_REVIEWS, JSON.stringify(reviewsByPlace))
-  }, [reviewsByPlace])
+    if (!currentUser) return
+    const userKey = getUserKey(currentUser)
+    if (!userKey) return
+    const key = `${LS_REVIEWS_PREFIX}${userKey}`
+    localStorage.setItem(key, JSON.stringify(reviewsByPlace))
+  }, [reviewsByPlace, currentUser])
+
+  // persistir visitados POR USUÁRIO
+  useEffect(() => {
+    if (!currentUser) return
+    const userKey = getUserKey(currentUser)
+    if (!userKey) return
+    const key = `${LS_VISITED_PREFIX}${userKey}`
+    localStorage.setItem(key, JSON.stringify(visitedPlaces))
+  }, [visitedPlaces, currentUser])
 
   // geolocalização
   useEffect(() => {
@@ -101,7 +154,7 @@ export default function App() {
     )
   }, [])
 
-  // busca na API externa (OpenTripMap – hoje pode estar vazio se não tiver key)
+  // busca na API externa (OpenTripMap)
   const fetchPlacesFromApi = useCallback(() => {
     if (!position) return
     setLoadingPlaces(true)
@@ -148,70 +201,166 @@ export default function App() {
     [apiPlaces, radius]
   )
 
-  // lista combinada: BASE + backend + API
-  const allPlaces = useMemo(
-    () => [...basePlacesNatal, ...backendPlaces, ...filteredApiPlaces],
-    [backendPlaces, filteredApiPlaces] // basePlacesNatal é estático
+  // lugares criados pelo usuário logado
+  const userPlaces = useMemo(
+    () =>
+      currentUser
+        ? backendPlaces.filter((p) => p.created_by === currentUser.id)
+        : [],
+    [backendPlaces, currentUser]
   )
 
-  // ===== Gamificação / perfil =====
+  // lista combinada: BASE + backend + API (todos, para o mapa)
+  const allPlaces = useMemo(
+    () => [...basePlacesNatal, ...backendPlaces, ...filteredApiPlaces],
+    [backendPlaces, filteredApiPlaces]
+  )
+
+  // ===== Gamificação / perfil (por usuário) =====
   const profileStats = useMemo(() => {
-    const savedPlaces = backendPlaces.length
-    const reviewedPlaces = Object.keys(reviewsByPlace).length
-    const totalReviews = Object.values(reviewsByPlace).reduce(
-      (sum, arr) => sum + arr.length,
-      0
-    )
+    if (!currentUser) {
+      return {
+        savedPlaces: 0,
+        reviewedPlacesCount: 0,
+        totalReviews: 0,
+        reviewedPlaces: [],
+        visitedCount: 0,
+        xp: 0,
+        level: 1,
+        currentLevelXp: 0,
+        xpToNext: 200,
+      }
+    }
 
-    // fórmula simples de XP (pode ajustar depois):
-    const xp = savedPlaces * 10 + reviewedPlaces * 5 + totalReviews * 2
-    const level = Math.floor(xp / 100) + 1
-    const currentLevelXp = xp % 100
-    const xpToNext = 100
+    const userKey = getUserKey(currentUser)
 
-    return { savedPlaces, reviewedPlaces, totalReviews, xp, level, currentLevelXp, xpToNext }
-  }, [backendPlaces, reviewsByPlace])
+    let reviewedPlaces = []
+    let totalReviews = 0
+
+    for (const [placeId, arr] of Object.entries(reviewsByPlace)) {
+      arr.forEach((review) => {
+        const reviewKey = review.userKey ?? review.userId ?? null
+        if (userKey && reviewKey === userKey) {
+          reviewedPlaces.push({
+            placeId: Number(placeId),
+            review,
+          })
+          totalReviews++
+        }
+      })
+    }
+
+    const savedPlaces = backendPlaces.filter(
+      (p) => p.created_by === currentUser.id
+    ).length
+
+    const visitedCount = visitedPlaces.length
+
+    // XP balanceado
+    const xp =
+      savedPlaces * 15 +
+      reviewedPlaces.length * 25 +
+      totalReviews * 10 +
+      visitedCount * 20
+
+    const level = Math.floor(xp / 200) + 1
+    const currentLevelXp = xp % 200
+    const xpToNext = 200
+
+    return {
+      savedPlaces,
+      reviewedPlacesCount: reviewedPlaces.length,
+      totalReviews,
+      reviewedPlaces,
+      visitedCount,
+      xp,
+      level,
+      currentLevelXp,
+      xpToNext,
+    }
+  }, [backendPlaces, reviewsByPlace, currentUser, visitedPlaces])
 
   // detalhes
   const openDetails = (p) => setSelectedPlace(p)
   const closeDetails = () => setSelectedPlace(null)
 
-  // reviews
+  // reviews do lugar selecionado
+  const selectedReviews = selectedPlace ? reviewsByPlace[selectedPlace.id] || [] : []
+
   const addReview = (review) => {
     if (!selectedPlace?.id) return
+
+    if (!currentUser) {
+      alert('Faça login para avaliar este local.')
+      return
+    }
+
+    const userKey = getUserKey(currentUser)
+
     setReviewsByPlace((prev) => {
       const arr = prev[selectedPlace.id] || []
-      return { ...prev, [selectedPlace.id]: [review, ...arr] }
+
+      // garante 1 review por usuário (considerando userKey antigo/novo)
+      const filtered = arr.filter((r) => {
+        const reviewKey = r.userKey ?? r.userId ?? null
+        return !(userKey && reviewKey === userKey)
+      })
+
+      const newReview = {
+        ...review,
+        userKey,              // chave estável
+        userId: currentUser.id, // mantido pra compatibilidade
+      }
+
+      return {
+        ...prev,
+        [selectedPlace.id]: [...filtered, newReview],
+      }
     })
   }
 
-  const selectedReviews = selectedPlace ? reviewsByPlace[selectedPlace.id] || [] : []
+  const deleteReview = () => {
+    if (!selectedPlace?.id || !currentUser) return
+
+    const userKey = getUserKey(currentUser)
+
+    setReviewsByPlace((prev) => {
+      const arr = prev[selectedPlace.id] || []
+      const filtered = arr.filter((r) => {
+        const reviewKey = r.userKey ?? r.userId ?? null
+        return !(userKey && reviewKey === userKey)
+      })
+
+      return {
+        ...prev,
+        [selectedPlace.id]: filtered,
+      }
+    })
+  }
 
   // clique com botão direito no mapa (pedido de criação)
-  const handleAddPlaceRequest = (placeDraft) => {
+  const handleAddPlaceRequest = (coords) => {
     if (!token) {
       alert('Faça login para salvar pontos turísticos.')
       setView('auth')
       return
     }
-    setCreateDraft(placeDraft)
-    setCreateModalOpen(true)
+    setCreateCoords(coords) // { lat, lon }
   }
 
   const handleConfirmCreatePlace = async (values) => {
-    if (!token || !createDraft) return
+    if (!token || !createCoords) return
     try {
       const payload = {
         name: values.name,
         type: values.type,
         address: values.address,
-        lat: createDraft.lat,
-        lon: createDraft.lon,
+        lat: createCoords.lat,
+        lon: createCoords.lon,
       }
       const created = await createPlace(payload, token)
       setBackendPlaces((prev) => [created, ...prev])
-      setCreateModalOpen(false)
-      setCreateDraft(null)
+      setCreateCoords(null)
     } catch (err) {
       console.error('Erro ao criar lugar no backend:', err)
       alert(err.message || 'Erro ao criar lugar')
@@ -224,16 +373,19 @@ export default function App() {
     setToken(tokenValue)
     setView('home')
     loadBackendPlaces()
+    loadReviewsForUser(user)
+    loadVisitedForUser(user)
   }
 
   const handleLogout = () => {
     setCurrentUser(null)
     setToken(null)
     setBackendPlaces([])
-    // limpamos também rota quando sair
     setRouteTarget(null)
     setRouteGeometry(null)
     setRouteInfo(null)
+    setReviewsByPlace({})
+    setVisitedPlaces([])
   }
 
   // ====== ROTA REAL ======
@@ -258,14 +410,13 @@ export default function App() {
         return
       }
 
-      // converte [lon, lat] -> [lat, lon] para o Leaflet
       const coords = feature.geometry.coordinates.map(([lon, lat]) => [lat, lon])
       const summary = feature.properties.summary
 
       setRouteGeometry(coords)
       setRouteInfo({
-        distance: summary.distance, // metros
-        duration: summary.duration, // segundos
+        distance: summary.distance,
+        duration: summary.duration,
       })
     } catch (err) {
       console.error('Erro ao obter rota:', err)
@@ -294,65 +445,46 @@ export default function App() {
 
   if (view === 'profile' && currentUser) {
     return (
-      <div className="profile-page">
-        <header className="topbar">
-          <div className="topbar-left">
-            <h1 className="app-title">Seu perfil — Mapify Turismo</h1>
-          </div>
-          <div className="topbar-right">
-            <button className="login-btn" onClick={() => setView('home')}>
-              Voltar para o mapa
-            </button>
-            <button className="logout-btn" onClick={handleLogout}>
-              Sair
-            </button>
-          </div>
-        </header>
+      <ProfilePage
+        user={currentUser}
+        stats={profileStats}
+        onBackToMap={() => setView('home')}
+        onLogout={handleLogout}
+        onOpenSavedPlaces={() => setView('saved')}
+        onOpenReviewed={() => setView('reviewed')}
+        onOpenVisited={() => setView('visited')}
+      />
+    )
+  }
 
-        <main className="profile-main">
-          <section className="profile-card">
-            <div className="profile-header">
-              <div className="profile-avatar">
-                {getInitials(currentUser.name)}
-              </div>
-              <div className="profile-info">
-                <h2>{currentUser.name}</h2>
-                <p>{currentUser.email}</p>
-                <span className="profile-level-badge">Nível {profileStats.level}</span>
-              </div>
-            </div>
+  if (view === 'saved' && currentUser) {
+    return (
+      <SavedPlacesPage
+        user={currentUser}
+        places={userPlaces}
+        onBackToMap={() => setView('home')}
+        onLogout={handleLogout}
+      />
+    )
+  }
 
-            <div className="profile-xp-block">
-              <div className="profile-xp-label">
-                XP: {profileStats.xp} • Próximo nível em {profileStats.xpToNext - profileStats.currentLevelXp} XP
-              </div>
-              <div className="profile-xp-bar">
-                <div
-                  className="profile-xp-bar-fill"
-                  style={{
-                    width: `${(profileStats.currentLevelXp / profileStats.xpToNext) * 100}%`,
-                  }}
-                />
-              </div>
-            </div>
+  if (view === 'reviewed' && currentUser) {
+    return (
+      <ReviewedPlacesPage
+        reviews={profileStats.reviewedPlaces}
+        places={allPlaces}
+        onBackToMap={() => setView('profile')}
+      />
+    )
+  }
 
-            <div className="profile-stats-grid">
-              <div className="profile-stat-card">
-                <span className="profile-stat-label">Locais salvos</span>
-                <span className="profile-stat-value">{profileStats.savedPlaces}</span>
-              </div>
-              <div className="profile-stat-card">
-                <span className="profile-stat-label">Locais avaliados</span>
-                <span className="profile-stat-value">{profileStats.reviewedPlaces}</span>
-              </div>
-              <div className="profile-stat-card">
-                <span className="profile-stat-label">Avaliações feitas</span>
-                <span className="profile-stat-value">{profileStats.totalReviews}</span>
-              </div>
-            </div>
-          </section>
-        </main>
-      </div>
+  if (view === 'visited' && currentUser) {
+    return (
+      <VisitedPlacesPage
+        places={allPlaces}
+        visitedPlaces={visitedPlaces}
+        onBack={() => setView('profile')}
+      />
     )
   }
 
@@ -361,7 +493,7 @@ export default function App() {
     <div className="app-root">
       <header className="topbar">
         <div className="topbar-left">
-          <h1 className="app-title">Site Turismo — Encontre pontos turísticos próximos</h1>
+          <h1 className="app-title">Mapify — Encontre pontos turísticos próximos</h1>
           <div className="controls">
             <label>
               Raio (m):
@@ -382,19 +514,20 @@ export default function App() {
         <div className="topbar-right">
           {currentUser ? (
             <div className="user-info">
-              <button
-                type="button"
-                className="user-chip"
-                onClick={() => setView('profile')}
-              >
-                <div className="user-avatar">
-                  {getInitials(currentUser.name)}
-                </div>
-                <div className="user-chip-texts">
-                  <div className="user-name">{currentUser.name}</div>
-                  <div className="user-level">Nível {profileStats.level}</div>
-                </div>
-              </button>
+              <div className="user-avatar">
+                {currentUser.name?.charAt(0)?.toUpperCase() || 'U'}
+              </div>
+              <div className="user-meta">
+                <span className="user-name">{currentUser.name}</span>
+                <span className="user-level">Nível {profileStats.level}</span>
+                <button
+                  type="button"
+                  className="user-link"
+                  onClick={() => setView('profile')}
+                >
+                  Ver perfil
+                </button>
+              </div>
               <button className="logout-btn" onClick={handleLogout}>
                 Sair
               </button>
@@ -416,7 +549,8 @@ export default function App() {
             radius={radius}
             onAddPlace={handleAddPlaceRequest}
             onSelectPlace={openDetails}
-            routeGeometry={routeGeometry} // <- aqui vai a rota real
+            routeGeometry={routeGeometry}
+            visitedPlaces={visitedPlaces}
           />
         </section>
 
@@ -448,7 +582,7 @@ export default function App() {
       </main>
 
       <footer className="footer">
-        <span>Projeto de turismo interativo — mapa + pontos salvos pelo usuário.</span>
+        <span>Projeto de turismo interativo — Mapify.</span>
       </footer>
 
       {/* Modal de detalhes */}
@@ -462,23 +596,19 @@ export default function App() {
           onClearRoute={handleClearRoute}
           hasRoute={hasRouteForSelected}
           routeInfo={routeInfo}
+          user={currentUser}
+          onDeleteReview={deleteReview}
+          visitedPlaces={visitedPlaces}
+          onToggleVisited={toggleVisited}
         />
       )}
 
       {/* Modal de criação de ponto */}
-      {createModalOpen && createDraft && (
+      {createCoords && (
         <PlaceCreateModal
-          open={createModalOpen}
-          defaultValues={{
-            name: '',
-            type: '',
-            address: '',
-          }}
-          onConfirm={handleConfirmCreatePlace}
-          onClose={() => {
-            setCreateModalOpen(false)
-            setCreateDraft(null)
-          }}
+          coords={createCoords}
+          onSave={handleConfirmCreatePlace}
+          onClose={() => setCreateCoords(null)}
         />
       )}
     </div>

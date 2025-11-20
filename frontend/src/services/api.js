@@ -48,3 +48,10 @@ export function createPlace(place, token) {
     token
   )
 }
+
+export function requestPasswordReset({ email }) {
+  return apiFetch('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
