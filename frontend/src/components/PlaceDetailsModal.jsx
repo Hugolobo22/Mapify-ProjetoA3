@@ -15,7 +15,6 @@ function Stars({ value = 0 }) {
   )
 }
 
-// mesma lógica do App
 const getUserKey = (user) => user?.email ?? user?.id ?? user?.name ?? null
 
 export default function PlaceDetailsModal({

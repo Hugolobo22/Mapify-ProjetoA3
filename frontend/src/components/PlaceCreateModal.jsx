@@ -3,7 +3,7 @@ import React, { useState } from 'react'
 
 export default function PlaceCreateModal({ coords, onSave, onClose }) {
   const [name, setName] = useState('')
-  const [type, setType] = useState('Ponto turístico') // valor padrão
+  const [type, setType] = useState('Ponto turístico')
   const [address, setAddress] = useState('')
 
   if (!coords) return null
@@ -14,7 +14,7 @@ export default function PlaceCreateModal({ coords, onSave, onClose }) {
 
     onSave?.({
       name: name.trim(),
-      type: type, // já vem do select
+      type: type, 
       address: address.trim() || undefined,
     })
   }

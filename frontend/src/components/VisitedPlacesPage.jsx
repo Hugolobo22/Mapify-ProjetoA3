@@ -9,12 +9,12 @@ export default function VisitedPlacesPage({
   // monta a lista de lugares completos a partir dos IDs visitados
   const visitedList = places.filter((p) => visitedPlaces.includes(p.id))
 
-  // função simples pra definir "categoria" visual (pin color)
+  // função simples pra definir "categoria" visual (cor do pin)
   function getCategory(place) {
     const kinds = (place.kinds || place.type || '').toString().toLowerCase()
 
     if (kinds.includes('restaurant') || kinds.includes('restaurante')) {
-      return 'restaurant' // PIN verde
+      return 'restaurant' // PIN verde (restaurante)
     }
     if (
       kinds.includes('shopping') ||
@@ -23,9 +23,9 @@ export default function VisitedPlacesPage({
       kinds.includes('commerce') ||
       kinds.includes('compras')
     ) {
-      return 'commerce' // PIN vermelho
+      return 'commerce' // PIN vermelho (comércio)
     }
-    return 'tourism' // PIN azul/roxo (ponto turístico)
+    return 'tourism' // PIN azul (ponto turístico)
   }
 
   const categoryLabel = {

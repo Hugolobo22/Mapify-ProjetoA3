@@ -27,7 +27,6 @@ export default function App() {
   const [loadingPlaces, setLoadingPlaces] = useState(false)
   const [radius, setRadius] = useState(1000)
 
-  // 'home' | 'auth' | 'profile' | 'saved' | 'reviewed' | 'visited'
   const [view, setView] = useState('home')
 
   // Auth
@@ -41,7 +40,7 @@ export default function App() {
   // Reviews locais (por usuário)
   const [reviewsByPlace, setReviewsByPlace] = useState({})
 
-  // Locais visitados (cartão postal) por usuário – array de IDs de lugar
+  // Locais visitados por usuário
   const [visitedPlaces, setVisitedPlaces] = useState([])
 
   // ROTA
@@ -49,7 +48,6 @@ export default function App() {
   const [routeGeometry, setRouteGeometry] = useState(null) // [[lat, lon], ...]
   const [routeInfo, setRouteInfo] = useState(null) // { distance, duration }
 
-  // ------- Helpers de reviews por usuário -------
   function loadReviewsForUser(user) {
     const userKey = getUserKey(user)
     if (!userKey) {
@@ -65,7 +63,6 @@ export default function App() {
     }
   }
 
-  // ------- Helpers de visitados por usuário -------
   function loadVisitedForUser(user) {
     const userKey = getUserKey(user)
     if (!userKey) {
@@ -127,7 +124,7 @@ export default function App() {
     localStorage.setItem(key, JSON.stringify(reviewsByPlace))
   }, [reviewsByPlace, currentUser])
 
-  // persistir visitados POR USUÁRIO
+  // persistir locais visitados POR USUÁRIO
   useEffect(() => {
     if (!currentUser) return
     const userKey = getUserKey(currentUser)
@@ -210,13 +207,11 @@ export default function App() {
     [backendPlaces, currentUser]
   )
 
-  // lista combinada: BASE + backend + API (todos, para o mapa)
   const allPlaces = useMemo(
     () => [...basePlacesNatal, ...backendPlaces, ...filteredApiPlaces],
     [backendPlaces, filteredApiPlaces]
   )
 
-  // ===== Gamificação / perfil (por usuário) =====
   const profileStats = useMemo(() => {
     if (!currentUser) {
       return {
@@ -256,7 +251,6 @@ export default function App() {
 
     const visitedCount = visitedPlaces.length
 
-    // XP balanceado
     const xp =
       savedPlaces * 15 +
       reviewedPlaces.length * 25 +
@@ -280,11 +274,9 @@ export default function App() {
     }
   }, [backendPlaces, reviewsByPlace, currentUser, visitedPlaces])
 
-  // detalhes
   const openDetails = (p) => setSelectedPlace(p)
   const closeDetails = () => setSelectedPlace(null)
 
-  // reviews do lugar selecionado
   const selectedReviews = selectedPlace ? reviewsByPlace[selectedPlace.id] || [] : []
 
   const addReview = (review) => {
@@ -300,7 +292,6 @@ export default function App() {
     setReviewsByPlace((prev) => {
       const arr = prev[selectedPlace.id] || []
 
-      // garante 1 review por usuário (considerando userKey antigo/novo)
       const filtered = arr.filter((r) => {
         const reviewKey = r.userKey ?? r.userId ?? null
         return !(userKey && reviewKey === userKey)
@@ -308,8 +299,8 @@ export default function App() {
 
       const newReview = {
         ...review,
-        userKey,              // chave estável
-        userId: currentUser.id, // mantido pra compatibilidade
+        userKey,              
+        userId: currentUser.id, 
       }
 
       return {
@@ -338,7 +329,7 @@ export default function App() {
     })
   }
 
-  // clique com botão direito no mapa (pedido de criação)
+  // clique com botão direito no mapa
   const handleAddPlaceRequest = (coords) => {
     if (!token) {
       alert('Faça login para salvar pontos turísticos.')
@@ -388,7 +379,6 @@ export default function App() {
     setVisitedPlaces([])
   }
 
-  // ====== ROTA REAL ======
   const handleRouteToPlace = async (place) => {
     if (!place || !position) return
     if (typeof place.lat !== 'number' || typeof place.lon !== 'number') {
@@ -433,7 +423,6 @@ export default function App() {
   const hasRouteForSelected =
     !!routeTarget && !!routeGeometry && selectedPlace && routeTarget.id === selectedPlace.id
 
-  // ====== TELAS ESPECIAIS ======
   if (view === 'auth') {
     return (
       <AuthPage
@@ -488,7 +477,6 @@ export default function App() {
     )
   }
 
-  // ====== RENDER: TELA PRINCIPAL (HOME) ======
   return (
     <div className="app-root">
       <header className="topbar">

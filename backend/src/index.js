@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
 import dotenv from 'dotenv'
 import crypto from 'crypto'
-import nodemailer from 'nodemailer'  // <- NOVO
+import nodemailer from 'nodemailer'
 
 dotenv.config()
 
@@ -35,15 +35,6 @@ const transporter = nodemailer.createTransport({
     pass: process.env.SMTP_PASS,
   },
 })
-
-// Teste opcional (pode comentar se quiser)
-// transporter.verify((err, success) => {
-//   if (err) {
-//     console.error('Erro ao conectar SMTP:', err)
-//   } else {
-//     console.log('SMTP pronto para enviar e-mails.')
-//   }
-// })
 
 // ========= FUNÇÕES AUXILIARES =========
 
@@ -148,8 +139,6 @@ app.post('/auth/login', async (req, res) => {
 
 // ========= RECUPERAÇÃO DE SENHA =========
 
-// Pede recuperação
-// Pede recuperação
 app.post('/auth/forgot-password', async (req, res) => {
   try {
     const { email } = req.body
@@ -169,7 +158,7 @@ app.post('/auth/forgot-password', async (req, res) => {
       })
     }
 
-    // 🔎 Validação rápida das variáveis de e-mail
+    // Validação rápida das variáveis de e-mail
     if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
       console.error('[RECUPERAÇÃO] SMTP não configurado corretamente no .env')
       return res.status(500).json({
@@ -186,7 +175,7 @@ app.post('/auth/forgot-password', async (req, res) => {
     resetTokens = resetTokens.filter((t) => t.userId !== user.id)
     resetTokens.push({ token, userId: user.id, expiresAt })
 
-    const resetLink = `http://localhost:5173/reset-password?token=${token}` // ajuste se seu front tiver outra porta
+    const resetLink = `http://localhost:5173/reset-password?token=${token}` 
 
     // Tentativa de envio de e-mail
     try {
@@ -232,7 +221,7 @@ app.post('/auth/forgot-password', async (req, res) => {
   }
 })
 
-// Redefinir senha (para usar depois com tela de reset)
+// Redefinir senha
 app.post('/auth/reset-password', async (req, res) => {
   try {
     const { token, password } = req.body

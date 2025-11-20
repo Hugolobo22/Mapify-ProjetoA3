@@ -12,7 +12,7 @@ export default function ReviewedPlacesPage({ reviews = [], places, onBackToMap }
 
   return (
     <div className="reviewed-page">
-      {/* Topbar simples reaproveitando o estilo global */}
+      {/* Topbar reaproveitando o estilo de outras páginas do projeto */}
       <header className="topbar">
         <div className="topbar-left">
           <h1 className="app-title">Locais avaliados</h1>

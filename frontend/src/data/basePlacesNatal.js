@@ -7,7 +7,7 @@ export const basePlacesNatal = [
     name: 'Praia de Ponta Negra',
     type: 'praia',
     address: 'Ponta Negra, Natal - RN',
-    lat: -5.877,      // aprox. Praia de Ponta Negra :contentReference[oaicite:0]{index=0}
+    lat: -5.877,      
     lon: -35.05
   },
   {
@@ -55,7 +55,7 @@ export const basePlacesNatal = [
     name: 'Midway Mall',
     type: 'shopping',
     address: 'Av. Sen. Salgado Filho, 1716 - Tirol',
-    lat: -5.812043,   // Midway Mall Natal :contentReference[oaicite:1]{index=1}
+    lat: -5.812043,   
     lon: -35.207862
   },
   {

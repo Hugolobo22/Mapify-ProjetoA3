@@ -14,7 +14,6 @@ body {
   display: flex;
 }
 
-/* Faz o app organizar header / main / footer em coluna */
 .app-root {
   flex: 1;
   display: flex;
@@ -179,7 +178,6 @@ body {
   margin: 0;
 }
 
-/* reaproveitando o visual que você já tinha pro li, só ligado na classe */
 .place-item {
   background: #f9f9f9;
   margin-bottom: 10px;
@@ -222,7 +220,7 @@ body {
   box-shadow: 0 15px 40px rgba(0,0,0,.35);
   display: flex;
   flex-direction: column;
-  overflow: hidden;              /* bordas arredondadas */
+  overflow: hidden;              
 }
 
 .modal-header {
@@ -256,7 +254,6 @@ body {
   color:#444;
 }
 
-/* corpo com scroll */
 .modal-body {
   flex: 1;
   overflow-y: auto;
@@ -268,7 +265,6 @@ body {
   border-bottom: 1px solid #f0f0f0;
 }
 
-/* estrelas + nota média */
 .stars-display {
   color:#ffb300;
   font-size: 1rem;
@@ -289,7 +285,6 @@ body {
   color:#777;
 }
 
-/* lista de reviews */
 .reviews-list {
   list-style:none;
   padding:0;
@@ -373,7 +368,6 @@ body {
   color: #c62828;
 }
 
-/* formulário fixinho embaixo */
 .modal-form {
   padding: 12px 18px 14px 18px;
   border-top: 1px solid #f0f0f0;
@@ -509,7 +503,7 @@ body {
   transform: translateY(-1px);
 }
 
-/* Card */
+/* ===== Card ===== */
 
 .auth-card {
   background: rgba(15, 23, 42, 0.96);
@@ -555,7 +549,7 @@ body {
   font-weight: 600;
 }
 
-/* Form */
+/* ===== Form ===== */
 
 .auth-form {
   display: flex;
@@ -999,8 +993,6 @@ body {
   margin: 0 auto;
 }
 
-/* ===== GRID DE LOCAIS SALVOS ===== */
-
 .saved-section {
   background: #ffffff;
   border-radius: 18px;
@@ -1098,8 +1090,6 @@ body {
   color: #6b7280;
 }
 
-/* DETALHES NO MODAL DE LOCAIS SALVOS */
-
 .saved-modal-image img {
   width: 100%;
   border-radius: 12px;
@@ -1126,7 +1116,6 @@ body {
   background: radial-gradient(circle at top left, #eef7ff 0, #f8fbff 45%, #f3f7fa 100%);
 }
 
-/* Agora ocupa a tela inteira e centraliza o conteúdo */
 .reviewed-main {
   flex: 1;
   width: 100%;
@@ -1137,7 +1126,6 @@ body {
   box-sizing: border-box;
 }
 
-/* Mantém o conteúdo em uma largura máxima agradável */
 .reviewed-content {
   width: 100%;
   max-width: 1200px;
@@ -1234,8 +1222,6 @@ body {
   font-size: 0.8rem;
   color: #9aa5b8;
 }
-
-/* Opcionalmente deixar o botão de voltar mais bonitinho, reutilizando estilo */
 
 .topbar .login-btn {
   border-radius: 999px;

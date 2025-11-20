@@ -17,7 +17,7 @@ import 'leaflet/dist/leaflet.css'
 const SHADOW_URL =
   'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png'
 
-// Pacote de markers coloridos (open source)
+// Pacote de markers coloridos (gratuitos)
 const ICON_BLUE_2X =
   'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png'
 const ICON_BLUE =

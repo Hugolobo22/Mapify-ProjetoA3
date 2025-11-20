@@ -8,7 +8,6 @@ return []
 }
 
 
-// 1) get list of places' ids within radius
 const kinds = 'interesting_places,tourist_facilities,sights'
 const listUrl = `https://api.opentripmap.com/0.1/en/places/radius?apikey=${OTM_API_KEY}&radius=${radius}&lon=${lon}&lat=${lat}&kinds=${encodeURIComponent(kinds)}&limit=50`
 
@@ -18,11 +17,9 @@ if (!listRes.ok) throw new Error('Falha ao buscar lista de lugares: ' + listRes.
 const listJson = await listRes.json()
 
 
-// listJson.features is an array
 if (!listJson || !Array.isArray(listJson.features)) return []
 
 
-// 2) For each feature, optionally fetch details (to get name, address)
 const places = await Promise.all(listJson.features.map(async (f) => {
 const id = f.properties.xid
 try {
@@ -48,7 +45,6 @@ return places.filter(Boolean)
 }
 
 
-// Fallback: mock data (useful during development without API key)
 function mockPlaces(lat, lon) {
 return [
 { id: 'mock-1', name: 'Praça Central', lat: lat + 0.002, lon: lon + 0.002, kinds: 'sight', dist: 200 },
@@ -58,15 +54,15 @@ return [
 
 
 export async function fetchNearbyPlaces(lat, lon, radius) {
-// try OTM first
+
 try {
 const res = await fetchOTMPlaces(lat, lon, radius)
 if (res && res.length) return res
-// if empty, return mock
+
 return mockPlaces(lat, lon)
 } catch (err) {
 console.error('Erro ao usar OpenTripMap:', err)
-// fallback to mock data
+
 return mockPlaces(lat, lon)
 }
 }
